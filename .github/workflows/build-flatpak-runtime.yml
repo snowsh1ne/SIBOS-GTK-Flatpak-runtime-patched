@@ -95,20 +95,41 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            ninja-build python3-pip \
+            ninja-build python3-pip pkg-config \
+            \
+            `# Core libraries` \
+            libglib2.0-dev libcairo2-dev libpango1.0-dev \
+            libgdk-pixbuf-2.0-dev libgraphene-1.0-dev \
+            libepoxy-dev libatk1.0-dev libatk-bridge2.0-dev \
+            \
+            `# X11 dependencies` \
             libx11-dev libxext-dev libxi-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev libxdamage-dev \
+            libxfixes-dev libxcomposite-dev libxkbcommon-dev \
+            \
+            `# Wayland dependencies (needed even if disabled)` \
             libwayland-dev wayland-protocols \
-            libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
-            libatk1.0-dev libatk-bridge2.0-dev \
-            libepoxy-dev libglib2.0-dev \
-            libfribidi-dev libharfbuzz-dev \
-            gettext xsltproc docbook-xsl \
-            libxkbcommon-dev libxinerama-dev libxcursor-dev \
-            libxdamage-dev libxfixes-dev libxcomposite-dev \
+            \
+            `# Vulkan and OpenGL` \
+            libvulkan-dev vulkan-tools \
+            \
+            `# Font and text rendering` \
+            libfribidi-dev libharfbuzz-dev libfontconfig-dev \
+            \
+            `# Image formats` \
+            libjpeg-dev libpng-dev libtiff-dev \
+            \
+            `# Printing and color management` \
+            libcups2-dev libcolord-dev \
+            \
+            `# Other GTK dependencies` \
+            librsvg2-dev sassc \
             gobject-introspection libgirepository1.0-dev \
-            libcups2-dev libcolord-dev librsvg2-dev \
-            libgraphene-1.0-dev \
-            sassc
+            gettext xsltproc docbook-xsl \
+            \
+            `# Additional GTK4 dependencies` \
+            libcloudproviders-dev libsysprof-6-dev \
+            libtracker-sparql-3.0-dev
           # Install latest meson via pip (GTK4 requires >= 1.5.0)
           pip3 install --upgrade meson
 
