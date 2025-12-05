@@ -328,7 +328,7 @@ jobs:
       - name: Install BuildStream and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip bubblewrap ostree flatpak
+          sudo apt-get install -y python3-pip bubblewrap ostree flatpak lzip
           pip install BuildStream dulwich
 
       - name: Clone gnome-build-meta
