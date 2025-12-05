@@ -364,12 +364,14 @@ jobs:
         run: |
           cd /tmp/gnome-build-meta
           echo "Starting GNOME Flatpak runtime build..."
-          bst build flatpak-runtimes.bst
+          # Run with sudo to allow bubblewrap sandbox operations
+          sudo -E bst --no-strict build flatpak-runtimes.bst
 
       - name: Export runtime artifacts
         run: |
           cd /tmp/gnome-build-meta
-          bst artifact checkout flatpak-runtimes.bst --directory ${{ github.workspace }}/flatpak-repo
+          sudo -E bst artifact checkout flatpak-runtimes.bst --directory ${{ github.workspace }}/flatpak-repo
+          sudo chown -R $USER:$USER ${{ github.workspace }}/flatpak-repo
 
       - name: Upload runtime artifact
         uses: actions/upload-artifact@v4
