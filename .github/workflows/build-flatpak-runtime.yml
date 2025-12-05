@@ -144,8 +144,10 @@ jobs:
               -Dinstalled_tests=false
           else
             # GTK4 meson options (use hyphens, not underscores)
+            # Use --wrap-mode=nofallback to avoid subproject conflicts
             meson setup _build \
               --prefix=/usr \
+              --wrap-mode=nofallback \
               -Dx11-backend=true \
               -Dwayland-backend=false \
               -Dbroadway-backend=false \
