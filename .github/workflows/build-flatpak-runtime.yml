@@ -110,8 +110,8 @@ jobs:
             `# Wayland dependencies (needed even if disabled)` \
             libwayland-dev wayland-protocols \
             \
-            `# Vulkan and OpenGL` \
-            libvulkan-dev vulkan-tools glslang-tools \
+            `# Vulkan, OpenGL and DRM` \
+            libvulkan-dev vulkan-tools glslang-tools libdrm-dev \
             \
             `# Font and text rendering` \
             libfribidi-dev libharfbuzz-dev libfontconfig-dev \
