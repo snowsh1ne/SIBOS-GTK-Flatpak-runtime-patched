@@ -95,7 +95,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            meson ninja-build \
+            ninja-build python3-pip \
             libx11-dev libxext-dev libxi-dev libxrandr-dev \
             libwayland-dev wayland-protocols \
             libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
@@ -108,6 +108,8 @@ jobs:
             gobject-introspection libgirepository1.0-dev \
             libcups2-dev libcolord-dev librsvg2-dev \
             sassc
+          # Install latest meson via pip (GTK4 requires >= 1.5.0)
+          pip3 install --upgrade meson
 
       - name: Clone GTK ${{ matrix.gtk_version }}
         run: |
