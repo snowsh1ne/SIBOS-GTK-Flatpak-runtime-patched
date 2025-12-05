@@ -153,7 +153,7 @@ jobs:
               -Dbuild-demos=false \
               -Dbuild-examples=false \
               -Dbuild-tests=false \
-              -Dgtk_doc=false \
+              -Ddocumentation=false \
               -Dbuild-testsuite=false
           fi
 
