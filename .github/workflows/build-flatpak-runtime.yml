@@ -107,6 +107,7 @@ jobs:
             libxdamage-dev libxfixes-dev libxcomposite-dev \
             gobject-introspection libgirepository1.0-dev \
             libcups2-dev libcolord-dev librsvg2-dev \
+            libgraphene-1.0-dev \
             sassc
           # Install latest meson via pip (GTK4 requires >= 1.5.0)
           pip3 install --upgrade meson
