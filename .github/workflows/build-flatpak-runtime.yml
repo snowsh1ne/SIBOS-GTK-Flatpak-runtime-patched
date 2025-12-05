@@ -167,12 +167,14 @@ jobs:
           else
             # GTK4 meson options (use hyphens, not underscores)
             # Use --wrap-mode=nofallback to avoid subproject conflicts
+            # Disable vulkan to avoid glslc dependency (not needed for patch validation)
             meson setup _build \
               --prefix=/usr \
               --wrap-mode=nofallback \
               -Dx11-backend=true \
               -Dwayland-backend=false \
               -Dbroadway-backend=false \
+              -Dvulkan=disabled \
               -Dintrospection=disabled \
               -Dbuild-demos=false \
               -Dbuild-examples=false \
