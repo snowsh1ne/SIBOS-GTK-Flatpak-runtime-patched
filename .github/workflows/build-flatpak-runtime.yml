@@ -329,7 +329,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip bubblewrap ostree flatpak
-          pip install BuildStream
+          pip install BuildStream dulwich
 
       - name: Clone gnome-build-meta
         run: |
