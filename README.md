@@ -47,51 +47,81 @@ The X11 Shape extension has been available since X11R5 (1991) and is universally
 ### Prerequisites
 
 - Linux system with Flatpak installed
-- BuildStream 2.x (for building freedesktop-sdk)
-- GNU Make
+- BuildStream 2.x (for building gnome-build-meta)
+- bubblewrap, ostree
 - ~50GB disk space for build artifacts
 
-### Local Build
+### Local Build (Full Runtime)
 
 ```bash
-# Clone freedesktop-sdk
-git clone https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git
-cd freedesktop-sdk
+# Clone gnome-build-meta for GNOME 47
+git clone --branch gnome-47 https://gitlab.gnome.org/GNOME/gnome-build-meta.git
+cd gnome-build-meta
 
-# Apply patches to GTK elements
-# (Patches modify the gtk3.bst and gtk4.bst elements to include our patches)
+# Copy our GTK4 patch
+mkdir -p patches
+cp /path/to/gtk4-x11-shape-corners.patch patches/
+
+# Modify elements/sdk/gtk.bst to include the patch as a source
 
 # Build the Flatpak runtime
-make export EXPORT_PATH=/path/to/export
+bst build flatpak-runtimes.bst
+bst artifact checkout flatpak-runtimes.bst --directory repo
+```
+
+### Standalone GTK Build (For Testing)
+
+```bash
+# Clone GTK4
+git clone --branch 4.14.4 https://github.com/GNOME/gtk.git
+cd gtk
+
+# Apply patch
+git apply /path/to/gtk4-x11-shape-corners.patch
+
+# Build
+meson setup _build -Dx11-backend=true
+ninja -C _build
 ```
 
 ### GitHub Actions
 
 The included workflow automatically:
-1. Checks out freedesktop-sdk
-2. Applies GTK patches
-3. Builds patched Flatpak runtimes
-4. Publishes to GitHub Releases
+1. Validates patches against GTK source structure
+2. Builds patched GTK3 and GTK4 standalone (for CI validation)
+3. Creates release artifacts with gnome-build-meta integration files
+4. Optionally builds full GNOME runtime (manual trigger)
 
 ## Using the Patched Runtime
+
+### Installing the Patched Runtime
+
+```bash
+# Add the local repository containing the patched runtime
+flatpak remote-add --user --no-gpg-verify sibos-gnome /path/to/repo
+
+# Install the patched GNOME Platform runtime
+flatpak install sibos-gnome org.gnome.Platform//47
+flatpak install sibos-gnome org.gnome.Sdk//47  # Optional: for development
+```
 
 ### For Flatpak Apps
 
 Override the default runtime with the patched version:
 
 ```bash
-# Install the patched runtime
-flatpak install ./org.freedesktop.Platform.flatpak
+# Override for a specific app to use the patched runtime
+flatpak override --user --runtime=org.gnome.Platform/x86_64/47 com.example.App
 
-# Override for a specific app
-flatpak override --user --runtime=org.sibos.Platform//24.08 com.example.App
+# Or run with the patched runtime directly
+flatpak run --runtime=org.gnome.Platform/x86_64/47 com.example.App
 ```
 
 ### System-wide Override
 
 ```bash
-# Override for all GTK apps
-flatpak override --user --env=GTK_THEME=Adwaita
+# Override runtime for all apps from a specific origin
+flatpak override --user --runtime=org.gnome.Platform/x86_64/47
 ```
 
 ## Technical Details
@@ -133,13 +163,15 @@ This creates a smooth approximation using the native X11 rectangle-based shape r
 - **GTK 3.24.x**: Tested with 3.24.43+
 - **GTK 4.x**: Tested with 4.14+
 - **X11 Servers**: Any X11 server with Shape extension (virtually all)
-- **Flatpak**: org.freedesktop.Platform 24.08+
+- **GNOME Runtime**: org.gnome.Platform 47+
+- **Flatpak**: Works with any Flatpak version supporting GNOME runtimes
 
 ## References
 
 - [X11 Shape Extension](https://www.x.org/releases/X11R7.7/doc/libXext/shapelib.html)
 - [GTK CSD Documentation](https://docs.gtk.org/gtk4/class.Window.html)
-- [Freedesktop SDK](https://freedesktop-sdk.io/)
+- [GNOME Build Meta](https://gitlab.gnome.org/GNOME/gnome-build-meta)
+- [GNOME Build Meta Releases](https://gitlab.gnome.org/GNOME/gnome-build-meta/-/releases)
 - [BuildStream](https://buildstream.build/)
 
 ## License

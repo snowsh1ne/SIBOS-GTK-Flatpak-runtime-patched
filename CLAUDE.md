@@ -91,23 +91,59 @@ ninja -C _build
 2. Disable any running compositor (`killall picom` etc.)
 3. Run a GTK app and check for rounded corners
 
-## Integration with Freedesktop SDK
+## Integration with GNOME Build Meta
+
+The GNOME Flatpak runtime (org.gnome.Platform) is built using gnome-build-meta, which uses BuildStream.
+
+**Important**: gnome-build-meta only builds GTK4. GTK3 is inherited from the freedesktop-sdk junction.
 
 To build a complete Flatpak runtime with these patches:
 
-1. Clone freedesktop-sdk:
+1. Clone gnome-build-meta:
    ```bash
-   git clone https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git
+   git clone --branch gnome-47 https://gitlab.gnome.org/GNOME/gnome-build-meta.git
+   cd gnome-build-meta
    ```
 
-2. Add patches to `patches/` directory
+2. Copy the GTK4 patch:
+   ```bash
+   mkdir -p patches
+   cp /path/to/gtk4-x11-shape-corners.patch patches/
+   ```
 
-3. Modify `elements/components/gtk3.bst` and `elements/components/gtk.bst` to include patches
+3. Modify `elements/sdk/gtk.bst` to include the patch as a source:
+   ```yaml
+   sources:
+     - kind: git
+       url: https://gitlab.gnome.org/GNOME/gtk.git
+       track: main
+       ref: <current-ref>
+
+     # Add this section:
+     - kind: patch
+       path: patches/gtk4-x11-shape-corners.patch
+       strip-level: 1
+   ```
 
 4. Build with BuildStream:
    ```bash
-   make export EXPORT_PATH=/path/to/export
+   bst build flatpak-runtimes.bst
+   bst artifact checkout flatpak-runtimes.bst --directory repo
    ```
+
+5. Install the patched runtime:
+   ```bash
+   flatpak remote-add --user --no-gpg-verify sibos-gnome repo
+   flatpak install sibos-gnome org.gnome.Platform//47
+   ```
+
+### For GTK3 Patches
+
+GTK3 is built as part of freedesktop-sdk, which gnome-build-meta includes as a junction. To patch GTK3:
+
+1. Fork/modify freedesktop-sdk
+2. Add the GTK3 patch to `elements/components/gtk3.bst`
+3. Update the junction in gnome-build-meta to point to your modified freedesktop-sdk
 
 ## Known Limitations
 

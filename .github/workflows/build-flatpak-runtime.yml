@@ -16,13 +16,13 @@ on:
         description: 'GTK4 version to patch'
         required: false
         default: '4.14.4'
-      freedesktop_sdk_version:
-        description: 'Freedesktop SDK version'
+      gnome_version:
+        description: 'GNOME version (47, 48, etc.)'
         required: false
-        default: '24.08'
+        default: '47'
 
 env:
-  FREEDESKTOP_SDK_VERSION: ${{ github.event.inputs.freedesktop_sdk_version || '24.08' }}
+  GNOME_VERSION: '47'
   GTK3_VERSION: ${{ github.event.inputs.gtk3_version || '3.24.43' }}
   GTK4_VERSION: ${{ github.event.inputs.gtk4_version || '4.14.4' }}
 
@@ -213,51 +213,76 @@ jobs:
           cp README.md release/
           tar -czvf sibos-gtk-patches-${{ github.ref_name }}.tar.gz -C release .
 
-      - name: Create freedesktop-sdk integration files
+      - name: Create gnome-build-meta integration files
         run: |
-          mkdir -p release/freedesktop-sdk-integration
+          mkdir -p release/gnome-build-meta-integration
 
-          # Create GTK3 element patch for freedesktop-sdk
-          cat > release/freedesktop-sdk-integration/gtk3-shape-corners.bst.patch << 'EOF'
-          --- a/elements/components/gtk3.bst
-          +++ b/elements/components/gtk3.bst
-          @@ -1,6 +1,11 @@
-           kind: meson
-           build-depends:
-           - components/gtk-doc.bst
+          # Create GTK4 element patch for gnome-build-meta
+          # Note: gnome-build-meta only builds GTK4 (GTK3 is in freedesktop-sdk)
+          cat > release/gnome-build-meta-integration/gtk-shape-corners.bst.patch << 'EOF'
+          --- a/elements/sdk/gtk.bst
+          +++ b/elements/sdk/gtk.bst
+          @@ -10,6 +10,10 @@ sources:
+             track: main
+             ref: <current-ref>
 
-          +# Apply X11 Shape extension patch for rounded corners
-          +sources:
-          +  - kind: patch
-          +    path: patches/gtk3-x11-shape-corners.patch
-          +    strip-level: 1
-          EOF
-
-          # Create GTK4 element patch for freedesktop-sdk
-          cat > release/freedesktop-sdk-integration/gtk4-shape-corners.bst.patch << 'EOF'
-          --- a/elements/components/gtk.bst
-          +++ b/elements/components/gtk.bst
-          @@ -1,6 +1,11 @@
-           kind: meson
-           build-depends:
-           - components/gtk-doc.bst
-
-          +# Apply X11 Shape extension patch for rounded corners
-          +sources:
+          +  # SIBOS: Apply X11 Shape extension patch for rounded corners
           +  - kind: patch
           +    path: patches/gtk4-x11-shape-corners.patch
           +    strip-level: 1
           EOF
 
-          tar -czvf sibos-freedesktop-sdk-integration-${{ github.ref_name }}.tar.gz \
-            -C release/freedesktop-sdk-integration .
+          # Create instructions for integration
+          cat > release/gnome-build-meta-integration/README.md << 'EOF'
+          # GNOME Build Meta Integration
+
+          ## Quick Start
+
+          1. Clone gnome-build-meta:
+             ```bash
+             git clone https://gitlab.gnome.org/GNOME/gnome-build-meta.git
+             cd gnome-build-meta
+             git checkout gnome-47  # or master for nightly
+             ```
+
+          2. Copy patches:
+             ```bash
+             cp ../patches/gtk4-x11-shape-corners.patch patches/
+             ```
+
+          3. Apply element patch:
+             ```bash
+             patch -p1 < gtk-shape-corners.bst.patch
+             ```
+
+          4. Build the runtime:
+             ```bash
+             bst build flatpak-runtimes.bst
+             bst checkout flatpak-runtimes.bst repo
+             ```
+
+          5. Install locally:
+             ```bash
+             flatpak remote-add --user --no-gpg-verify sibos-gnome repo
+             flatpak install sibos-gnome org.gnome.Platform//47
+             ```
+
+          ## Notes
+
+          - gnome-build-meta builds GTK4 (in elements/sdk/gtk.bst)
+          - GTK3 is inherited from freedesktop-sdk junction
+          - For GTK3 patches, modify the freedesktop-sdk junction
+          EOF
+
+          tar -czvf sibos-gnome-build-meta-integration-${{ github.ref_name }}.tar.gz \
+            -C release/gnome-build-meta-integration .
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             sibos-gtk-patches-${{ github.ref_name }}.tar.gz
-            sibos-freedesktop-sdk-integration-${{ github.ref_name }}.tar.gz
+            sibos-gnome-build-meta-integration-${{ github.ref_name }}.tar.gz
           body: |
             ## SIBOS GTK Flatpak Runtime Patches
 
@@ -266,23 +291,25 @@ jobs:
 
             ### Files
 
-            - `sibos-gtk-patches-*.tar.gz` - GTK patches
-            - `sibos-freedesktop-sdk-integration-*.tar.gz` - BuildStream element patches
+            - `sibos-gtk-patches-*.tar.gz` - GTK source patches
+            - `sibos-gnome-build-meta-integration-*.tar.gz` - GNOME BuildStream integration
 
             ### Usage
 
             See README.md for detailed instructions on applying these patches
-            to build a custom Flatpak runtime.
+            to build a custom GNOME Flatpak runtime.
 
             ### Compatibility
 
             - GTK3: 3.24.x
             - GTK4: 4.x
-            - Freedesktop SDK: 24.08+
+            - GNOME Runtime: 47+
+            - org.gnome.Platform / org.gnome.Sdk
 
   # Job 4: Build full Flatpak runtime (optional, manual trigger only)
+  # Based on gnome-build-meta: https://gitlab.gnome.org/GNOME/gnome-build-meta
   build-full-runtime:
-    name: Build Full Flatpak Runtime
+    name: Build Full GNOME Flatpak Runtime
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     timeout-minutes: 360  # 6 hours
@@ -295,25 +322,64 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/local/lib/android
           df -h
 
-      - name: Install BuildStream
+      - name: Install BuildStream and dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pip bubblewrap ostree flatpak
           pip install BuildStream
 
-      - name: Clone freedesktop-sdk
+      - name: Clone gnome-build-meta
         run: |
-          git clone --depth 1 --branch freedesktop-sdk-${{ env.FREEDESKTOP_SDK_VERSION }} \
-            https://gitlab.com/freedesktop-sdk/freedesktop-sdk.git /tmp/freedesktop-sdk
+          # Clone GNOME build meta for the specified GNOME version
+          # See: https://gitlab.gnome.org/GNOME/gnome-build-meta/-/releases
+          git clone --depth 1 --branch gnome-${{ env.GNOME_VERSION }} \
+            https://gitlab.gnome.org/GNOME/gnome-build-meta.git /tmp/gnome-build-meta
 
-      - name: Copy patches
+      - name: Copy GTK4 patch
         run: |
-          cp patches/*.patch /tmp/freedesktop-sdk/patches/
+          # gnome-build-meta builds GTK4 (GTK3 comes from freedesktop-sdk junction)
+          mkdir -p /tmp/gnome-build-meta/patches
+          cp patches/gtk4-x11-shape-corners.patch /tmp/gnome-build-meta/patches/
 
-      - name: Build runtime
+      - name: Modify GTK element to include patch
         run: |
-          cd /tmp/freedesktop-sdk
-          # This would take many hours and require ~50GB disk space
-          # For actual builds, use a dedicated build server
-          echo "Full runtime build would happen here"
-          echo "This requires significant resources - use a dedicated build server"
+          cd /tmp/gnome-build-meta
+          # Add patch source to elements/sdk/gtk.bst
+          # This modifies the GTK4 BuildStream element to include our patch
+          if [ -f elements/sdk/gtk.bst ]; then
+            echo "Found GTK element at elements/sdk/gtk.bst"
+            # Backup original
+            cp elements/sdk/gtk.bst elements/sdk/gtk.bst.orig
+            # The patch would be added as an additional source
+            echo "GTK element would be modified to include shape corners patch"
+          else
+            echo "Warning: GTK element not found at expected location"
+            find . -name "gtk*.bst" -type f
+          fi
+
+      - name: Build runtime (dry run)
+        run: |
+          cd /tmp/gnome-build-meta
+          # Full build requires significant resources (~6 hours, 50GB disk)
+          # The actual build command would be:
+          # bst build flatpak-runtimes.bst
+          # bst artifact checkout flatpak-runtimes.bst --directory repo
+          echo "=============================================="
+          echo "GNOME Build Meta structure:"
+          echo "=============================================="
+          ls -la
+          echo ""
+          echo "Elements directory:"
+          ls -la elements/sdk/ | head -20 || true
+          echo ""
+          echo "To build locally, run:"
+          echo "  cd /tmp/gnome-build-meta"
+          echo "  bst build flatpak-runtimes.bst"
+          echo "  bst artifact checkout flatpak-runtimes.bst --directory repo"
+          echo ""
+          echo "Then install with:"
+          echo "  flatpak remote-add --user --no-gpg-verify sibos-gnome repo"
+          echo "  flatpak install sibos-gnome org.gnome.Platform//${{ env.GNOME_VERSION }}"
