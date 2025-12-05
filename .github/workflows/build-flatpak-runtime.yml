@@ -347,39 +347,12 @@ jobs:
       - name: Modify GTK element to include patch
         run: |
           cd /tmp/gnome-build-meta
-          # Add patch source to elements/sdk/gtk.bst
           if [ -f elements/sdk/gtk.bst ]; then
             echo "Found GTK element at elements/sdk/gtk.bst"
             cp elements/sdk/gtk.bst elements/sdk/gtk.bst.orig
-
-            # Insert patch source after the git source
-            python3 << 'PYTHON'
-import yaml
-
-with open('elements/sdk/gtk.bst', 'r') as f:
-    content = f.read()
-
-# Parse YAML
-data = yaml.safe_load(content)
-
-# Add patch source
-patch_source = {
-    'kind': 'patch',
-    'path': 'patches/gtk4-x11-shape-corners.patch',
-    'strip-level': 1
-}
-
-if 'sources' in data:
-    data['sources'].append(patch_source)
-else:
-    data['sources'] = [patch_source]
-
-with open('elements/sdk/gtk.bst', 'w') as f:
-    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
-
-print("Patch source added to gtk.bst")
-PYTHON
-
+            python3 ${{ github.workspace }}/scripts/add-patch-to-bst.py \
+              elements/sdk/gtk.bst \
+              patches/gtk4-x11-shape-corners.patch
             echo "Modified gtk.bst:"
             cat elements/sdk/gtk.bst
           else
