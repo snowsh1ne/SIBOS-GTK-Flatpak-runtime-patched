@@ -128,6 +128,7 @@ jobs:
           cd /tmp/gtk-build
           # Configure with X11 backend enabled
           if [ "${{ matrix.name }}" = "gtk3" ]; then
+            # GTK3 meson options
             meson setup _build \
               --prefix=/usr \
               -Dx11_backend=true \
@@ -137,9 +138,10 @@ jobs:
               -Ddemos=false \
               -Dexamples=false \
               -Dtests=false \
-              -Dman=false \
-              -Ddocumentation=false
+              -Dgtk_doc=false \
+              -Dinstalled_tests=false
           else
+            # GTK4 meson options (use hyphens, not underscores)
             meson setup _build \
               --prefix=/usr \
               -Dx11-backend=true \
@@ -149,8 +151,8 @@ jobs:
               -Dbuild-demos=false \
               -Dbuild-examples=false \
               -Dbuild-tests=false \
-              -Dman-pages=false \
-              -Ddocumentation=false
+              -Dgtk_doc=false \
+              -Dbuild-testsuite=false
           fi
 
       - name: Build GTK ${{ matrix.gtk_version }}
