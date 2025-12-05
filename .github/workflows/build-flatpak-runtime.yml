@@ -111,7 +111,7 @@ jobs:
             libwayland-dev wayland-protocols \
             \
             `# Vulkan and OpenGL` \
-            libvulkan-dev vulkan-tools glslc shaderc \
+            libvulkan-dev vulkan-tools glslang-tools \
             \
             `# Font and text rendering` \
             libfribidi-dev libharfbuzz-dev libfontconfig-dev \
