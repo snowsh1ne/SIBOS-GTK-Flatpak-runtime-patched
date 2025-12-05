@@ -306,12 +306,12 @@ jobs:
             - GNOME Runtime: 47+
             - org.gnome.Platform / org.gnome.Sdk
 
-  # Job 4: Build full Flatpak runtime (optional, manual trigger only)
+  # Job 4: Build full Flatpak runtime
   # Based on gnome-build-meta: https://gitlab.gnome.org/GNOME/gnome-build-meta
   build-full-runtime:
     name: Build Full GNOME Flatpak Runtime
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    needs: [validate-patches]
     timeout-minutes: 360  # 6 hours
     steps:
       - name: Checkout repository
@@ -348,38 +348,59 @@ jobs:
         run: |
           cd /tmp/gnome-build-meta
           # Add patch source to elements/sdk/gtk.bst
-          # This modifies the GTK4 BuildStream element to include our patch
           if [ -f elements/sdk/gtk.bst ]; then
             echo "Found GTK element at elements/sdk/gtk.bst"
-            # Backup original
             cp elements/sdk/gtk.bst elements/sdk/gtk.bst.orig
-            # The patch would be added as an additional source
-            echo "GTK element would be modified to include shape corners patch"
+
+            # Insert patch source after the git source
+            python3 << 'PYTHON'
+import yaml
+
+with open('elements/sdk/gtk.bst', 'r') as f:
+    content = f.read()
+
+# Parse YAML
+data = yaml.safe_load(content)
+
+# Add patch source
+patch_source = {
+    'kind': 'patch',
+    'path': 'patches/gtk4-x11-shape-corners.patch',
+    'strip-level': 1
+}
+
+if 'sources' in data:
+    data['sources'].append(patch_source)
+else:
+    data['sources'] = [patch_source]
+
+with open('elements/sdk/gtk.bst', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, sort_keys=False)
+
+print("Patch source added to gtk.bst")
+PYTHON
+
+            echo "Modified gtk.bst:"
+            cat elements/sdk/gtk.bst
           else
             echo "Warning: GTK element not found at expected location"
             find . -name "gtk*.bst" -type f
           fi
 
-      - name: Build runtime (dry run)
+      - name: Build runtime
         run: |
           cd /tmp/gnome-build-meta
-          # Full build requires significant resources (~6 hours, 50GB disk)
-          # The actual build command would be:
-          # bst build flatpak-runtimes.bst
-          # bst artifact checkout flatpak-runtimes.bst --directory repo
-          echo "=============================================="
-          echo "GNOME Build Meta structure:"
-          echo "=============================================="
-          ls -la
-          echo ""
-          echo "Elements directory:"
-          ls -la elements/sdk/ | head -20 || true
-          echo ""
-          echo "To build locally, run:"
-          echo "  cd /tmp/gnome-build-meta"
-          echo "  bst build flatpak-runtimes.bst"
-          echo "  bst artifact checkout flatpak-runtimes.bst --directory repo"
-          echo ""
-          echo "Then install with:"
-          echo "  flatpak remote-add --user --no-gpg-verify sibos-gnome repo"
-          echo "  flatpak install sibos-gnome org.gnome.Platform//${{ env.GNOME_VERSION }}"
+          echo "Starting GNOME Flatpak runtime build..."
+          bst build flatpak-runtimes.bst
+
+      - name: Export runtime artifacts
+        run: |
+          cd /tmp/gnome-build-meta
+          bst artifact checkout flatpak-runtimes.bst --directory ${{ github.workspace }}/flatpak-repo
+
+      - name: Upload runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gnome-platform-${{ env.GNOME_VERSION }}-patched
+          path: flatpak-repo/
+          retention-days: 30
