@@ -85,8 +85,8 @@ jobs:
             gtk_version: "3.24"
             branch: "gtk-3-24"
           - name: gtk4
-            gtk_version: "4.x"
-            branch: "main"
+            gtk_version: "4.14"
+            branch: "4.14.4"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
