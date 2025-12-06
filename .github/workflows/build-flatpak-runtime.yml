@@ -364,15 +364,7 @@ jobs:
         run: |
           cd /tmp/gnome-build-meta
           echo "Starting GNOME Flatpak runtime build..."
-          # Create BuildStream config to use local sandbox with relaxed permissions
-          mkdir -p ~/.config
-          cat > ~/.config/buildstream.conf << 'EOF'
-          sandbox:
-            build-uid: 0
-            build-gid: 0
-          EOF
-          # Run with sudo and set cache directory permissions
-          sudo chmod -R 777 ~/.cache/buildstream || true
+          # Run with sudo to allow bubblewrap sandbox operations
           sudo -E bst --no-strict build flatpak-runtimes.bst
 
       - name: Export runtime artifacts
