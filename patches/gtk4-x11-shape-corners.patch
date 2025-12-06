@@ -17,13 +17,13 @@ rounded corners on window managers like SBWM, i3, dwm, etc.
 
 Signed-off-by: SIBOS Project <sibos@example.org>
 ---
- gdk/x11/gdksurface-x11.c | 56 ++++++++++++++++++++++++++++
- gdk/x11/gdkx11surface.h  |  4 ++
- gtk/gtkwindow.c          | 178 ++++++++++++++++++++++++++++++++++++++++++++++++
- 3 files changed, 238 insertions(+)
+ gdk/x11/gdksurface-x11.c |  56 ++++++++++++++
+ gdk/x11/gdkx11surface.h  |   4 +
+ gtk/gtkwindow.c          | 160 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 220 insertions(+)
 
 diff --git a/gdk/x11/gdksurface-x11.c b/gdk/x11/gdksurface-x11.c
-index 1234567890..abcdef1234 100644
+index 1234567..abcdef1 100644
 --- a/gdk/x11/gdksurface-x11.c
 +++ b/gdk/x11/gdksurface-x11.c
 @@ -3028,6 +3028,62 @@ gdk_x11_surface_set_input_region (GdkSurface     *surface,
@@ -93,7 +93,7 @@ index 1234567890..abcdef1234 100644
   * gdk_x11_surface_set_user_time:
   * @surface: (type GdkX11Surface): A toplevel `GdkSurface`
 diff --git a/gdk/x11/gdkx11surface.h b/gdk/x11/gdkx11surface.h
-index 1234567890..abcdef1234 100644
+index 1234567..abcdef1 100644
 --- a/gdk/x11/gdkx11surface.h
 +++ b/gdk/x11/gdkx11surface.h
 @@ -54,6 +54,10 @@ GDK_AVAILABLE_IN_ALL
@@ -108,7 +108,7 @@ index 1234567890..abcdef1234 100644
   * GDK_SURFACE_XID:
   * @win: a `GdkSurface`
 diff --git a/gtk/gtkwindow.c b/gtk/gtkwindow.c
-index 1234567890..abcdef1234 100644
+index 1234567..abcdef1 100644
 --- a/gtk/gtkwindow.c
 +++ b/gtk/gtkwindow.c
 @@ -71,6 +71,11 @@
@@ -133,28 +133,10 @@ index 1234567890..abcdef1234 100644
  };
 
  enum {
-@@ -3159,6 +3167,154 @@ gtk_window_enable_csd (GtkWindow *window)
-     {
-       gtk_widget_add_css_class (widget, "solid-csd");
-     }
-+
-+#ifdef GDK_WINDOWING_X11
-+  /* Apply bounding shape for rounded corners on non-composited X11 */
-+  if (!gtk_window_is_composited (window))
-+    {
-+      GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (window));
-+      if (surface != NULL && GDK_IS_X11_SURFACE (surface))
-+        {
-+          GtkWindowPrivate *priv = gtk_window_get_instance_private (window);
-+          if (gtk_widget_get_realized (widget))
-+            update_x11_bounding_shape (window);
-+        }
-+    }
-+#endif
-+
-+  priv->client_decorated = TRUE;
-+}
-+
+@@ -3140,6 +3148,158 @@ gtk_window_supports_client_shadow (GtkWindow *window)
+   return TRUE;
+ }
+
 +#ifdef GDK_WINDOWING_X11
 +/**
 + * create_rounded_corner_region:
@@ -273,7 +255,6 @@ index 1234567890..abcdef1234 100644
 +update_x11_bounding_shape (GtkWindow *window)
 +{
 +  GtkWindowPrivate *priv = gtk_window_get_instance_private (window);
-+  GtkWidget *widget = GTK_WIDGET (window);
 +  GdkSurface *surface;
 +  cairo_region_t *region;
 +  int width, height, radius;
@@ -300,79 +281,34 @@ index 1234567890..abcdef1234 100644
 +      priv->x11_shape_applied = TRUE;
 +    }
 +}
-+
-+static void
-+clear_x11_bounding_shape (GtkWindow *window)
-+{
-+  GtkWindowPrivate *priv = gtk_window_get_instance_private (window);
-+  GdkSurface *surface;
-+
-+  surface = gtk_native_get_surface (GTK_NATIVE (window));
-+  if (surface == NULL || !GDK_IS_X11_SURFACE (surface))
-+    return;
-+
-+  if (priv->x11_shape_applied)
-+    {
-+      gdk_x11_surface_set_bounding_shape (surface, NULL);
-+      priv->x11_shape_applied = FALSE;
-+    }
-+}
 +#endif /* GDK_WINDOWING_X11 */
-
--  priv->client_decorated = TRUE;
--}
-
- /**
-  * gtk_window_set_titlebar:
-@@ -4220,6 +4376,13 @@ update_realized_window_properties (GtkWindow *window)
-   if (!priv->client_decorated || !priv->use_client_shadow)
-     return;
-
-+#ifdef GDK_WINDOWING_X11
-+  /* On non-composited X11, update the bounding shape for rounded corners */
-+  if (priv->client_decorated && !priv->use_client_shadow &&
-+      !priv->maximized && !priv->fullscreen)
-+    update_x11_bounding_shape (window);
-+#endif
 +
-   gtk_css_boxes_init (&css_boxes, GTK_WIDGET (window));
-   border_rect = gtk_css_boxes_get_border_rect (&css_boxes);
-
-@@ -4851,6 +5014,11 @@ gtk_window_realize (GtkWidget *widget)
-     default_title = g_get_prgname ();
-     gtk_window_set_title_internal (window, title, default_title);
-   }
++static gboolean
++gtk_window_is_composited (GtkWindow *window)
++{
++  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (window));
++  return gdk_display_is_composited (display);
++}
 +
-+#ifdef GDK_WINDOWING_X11
-+  if (priv->client_decorated && !priv->use_client_shadow)
-+    update_x11_bounding_shape (window);
-+#endif
- }
-
  static void
-@@ -5789,6 +5957,11 @@ gtk_window_state_flags_changed (GtkWidget     *widget,
-         set_titlebar_css (window);
-       }
-   }
-+
-+#ifdef GDK_WINDOWING_X11
-+  if (priv->client_decorated && !priv->use_client_shadow)
-+    update_x11_bounding_shape (window);
-+#endif
- }
-
- static void
-@@ -5831,6 +6004,11 @@ surface_state_changed (GtkWidget *widget)
-         gtk_widget_queue_allocate (widget);
+ gtk_window_enable_csd (GtkWindow *window)
+ {
+@@ -3159,6 +3319,16 @@ gtk_window_enable_csd (GtkWindow *window)
+     {
+       gtk_widget_add_css_class (widget, "solid-csd");
      }
-
-+#ifdef GDK_WINDOWING_X11
-+  if (priv->client_decorated && !priv->use_client_shadow)
-+    update_x11_bounding_shape (window);
-+#endif
 +
-   old_scale = priv->scale;
-   priv->scale = gtk_widget_get_scale_factor (widget);
-   if (old_scale != priv->scale)
++#ifdef GDK_WINDOWING_X11
++  /* Apply bounding shape for rounded corners on non-composited X11 */
++  if (!gtk_window_is_composited (window))
++    {
++      GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (window));
++      if (surface != NULL && GDK_IS_X11_SURFACE (surface))
++        update_x11_bounding_shape (window);
++    }
++#endif
+
+   priv->client_decorated = TRUE;
+ }
 --
 2.43.0
