@@ -306,13 +306,13 @@ jobs:
             - GNOME Runtime: 47+
             - org.gnome.Platform / org.gnome.Sdk
 
-  # Job 4: Build full Flatpak runtime
-  # Based on gnome-build-meta: https://gitlab.gnome.org/GNOME/gnome-build-meta
-  build-full-runtime:
-    name: Build Full GNOME Flatpak Runtime
+  # Job 4: Build patched GTK4 extension for existing GNOME runtime
+  # Downloads pre-built runtime from Flathub, builds patched GTK4, creates extension
+  build-patched-runtime:
+    name: Build Patched GTK4 Extension
     runs-on: ubuntu-latest
     needs: [validate-patches]
-    timeout-minutes: 360  # 6 hours
+    timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -325,57 +325,131 @@ jobs:
           sudo rm -rf /usr/local/lib/android
           df -h
 
-      - name: Install BuildStream and dependencies
+      - name: Install Flatpak and dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-pip bubblewrap ostree flatpak lzip
-          sudo pip install --ignore-installed BuildStream dulwich tomlkit
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Clone gnome-build-meta
+      - name: Install GNOME SDK and Platform
         run: |
-          # Clone GNOME build meta for the specified GNOME version
-          # See: https://gitlab.gnome.org/GNOME/gnome-build-meta/-/releases
-          git clone --depth 1 --branch gnome-${{ env.GNOME_VERSION }} \
-            https://gitlab.gnome.org/GNOME/gnome-build-meta.git /tmp/gnome-build-meta
+          sudo flatpak install -y flathub org.gnome.Platform//${{ env.GNOME_VERSION }}
+          sudo flatpak install -y flathub org.gnome.Sdk//${{ env.GNOME_VERSION }}
 
-      - name: Copy GTK4 patch
+      - name: Clone GTK4 source
         run: |
-          # gnome-build-meta builds GTK4 (GTK3 comes from freedesktop-sdk junction)
-          mkdir -p /tmp/gnome-build-meta/patches
-          cp patches/gtk4-x11-shape-corners.patch /tmp/gnome-build-meta/patches/
+          git clone --depth 1 --branch 4.14.5 https://gitlab.gnome.org/GNOME/gtk.git /tmp/gtk4
 
-      - name: Modify GTK element to include patch
+      - name: Apply X11 Shape corners patch
         run: |
-          cd /tmp/gnome-build-meta
-          if [ -f elements/sdk/gtk.bst ]; then
-            echo "Found GTK element at elements/sdk/gtk.bst"
-            cp elements/sdk/gtk.bst elements/sdk/gtk.bst.orig
-            python3 ${{ github.workspace }}/scripts/add-patch-to-bst.py \
-              elements/sdk/gtk.bst \
-              patches/gtk4-x11-shape-corners.patch
-            echo "Modified gtk.bst:"
-            cat elements/sdk/gtk.bst
-          else
-            echo "Warning: GTK element not found at expected location"
-            find . -name "gtk*.bst" -type f
+          cd /tmp/gtk4
+          git apply ${{ github.workspace }}/patches/gtk4-x11-shape-corners.patch
+          echo "Patch applied successfully"
+
+      - name: Build GTK4 inside Flatpak SDK
+        run: |
+          cd /tmp/gtk4
+          # Build GTK4 using the GNOME SDK environment
+          flatpak run --share=network --filesystem=/tmp/gtk4 \
+            --command=bash org.gnome.Sdk//${{ env.GNOME_VERSION }} -c '
+              cd /tmp/gtk4
+              meson setup _build \
+                --prefix=/app \
+                -Dx11-backend=true \
+                -Dwayland-backend=true \
+                -Dbroadway-backend=false \
+                -Dvulkan=enabled \
+                -Dmedia-gstreamer=enabled \
+                -Dintrospection=enabled \
+                -Dbuild-demos=false \
+                -Dbuild-examples=false \
+                -Dbuild-tests=false \
+                -Ddocumentation=false \
+                -Dbuild-testsuite=false
+              ninja -C _build
+              DESTDIR=/tmp/gtk4-install ninja -C _build install
+            '
+          echo "GTK4 build completed"
+          ls -la /tmp/gtk4-install/app/lib/ || true
+
+      - name: Create Flatpak extension manifest
+        run: |
+          mkdir -p /tmp/extension-build
+          cat > /tmp/extension-build/org.gnome.Platform.Compat.x11-shape.json << 'EOF'
+          {
+            "id": "org.gnome.Platform.Compat.x11-shape",
+            "branch": "${{ env.GNOME_VERSION }}",
+            "runtime": "org.gnome.Platform",
+            "runtime-version": "${{ env.GNOME_VERSION }}",
+            "sdk": "org.gnome.Sdk",
+            "build-extension": true,
+            "separate-locales": false,
+            "appstream-compose": false,
+            "build-options": {
+              "prefix": "/usr/lib/x86_64-linux-gnu/GL/default"
+            },
+            "modules": [
+              {
+                "name": "gtk4-patched",
+                "buildsystem": "simple",
+                "build-commands": [
+                  "cp -r lib/* /app/lib/ || true",
+                  "cp -r share/* /app/share/ || true"
+                ],
+                "sources": [
+                  {
+                    "type": "dir",
+                    "path": "/tmp/gtk4-install/app"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+
+      - name: Create simple tarball of patched GTK4
+        run: |
+          cd /tmp/gtk4-install
+          tar -czvf ${{ github.workspace }}/gtk4-patched-x11-shape.tar.gz app/
+          echo "Created patched GTK4 tarball"
+          ls -la ${{ github.workspace }}/gtk4-patched-x11-shape.tar.gz
+
+      - name: Create installation script
+        run: |
+          cat > ${{ github.workspace }}/install-patched-gtk4.sh << 'EOF'
+          #!/bin/bash
+          # Install patched GTK4 for X11 Shape extension support
+          # This replaces GTK4 in the GNOME Flatpak runtime
+
+          set -e
+
+          RUNTIME_PATH="$HOME/.local/share/flatpak/runtime/org.gnome.Platform/x86_64/${{ env.GNOME_VERSION }}/active/files"
+
+          if [ ! -d "$RUNTIME_PATH" ]; then
+            echo "Error: GNOME Platform runtime not found at $RUNTIME_PATH"
+            echo "Please install it first: flatpak install flathub org.gnome.Platform//${{ env.GNOME_VERSION }}"
+            exit 1
           fi
 
-      - name: Build runtime
-        run: |
-          cd /tmp/gnome-build-meta
-          echo "Starting GNOME Flatpak runtime build..."
-          # Run with sudo to allow bubblewrap sandbox operations
-          sudo -E bst --no-strict build flatpak-runtimes.bst
+          echo "Backing up original GTK4 libraries..."
+          sudo cp -a "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.so"* "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/" 2>/dev/null || mkdir -p "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/"
 
-      - name: Export runtime artifacts
-        run: |
-          cd /tmp/gnome-build-meta
-          sudo -E bst artifact checkout flatpak-runtimes.bst --directory ${{ github.workspace }}/flatpak-repo
-          sudo chown -R $USER:$USER ${{ github.workspace }}/flatpak-repo
+          echo "Extracting patched GTK4..."
+          tar -xzf gtk4-patched-x11-shape.tar.gz
 
-      - name: Upload runtime artifact
+          echo "Installing patched GTK4 libraries..."
+          sudo cp -a app/lib/libgtk-4.so* "$RUNTIME_PATH/lib/x86_64-linux-gnu/"
+
+          echo "Done! Patched GTK4 with X11 Shape extension support installed."
+          echo "Flatpak apps using org.gnome.Platform will now have rounded corners on non-composited X11."
+          EOF
+          chmod +x ${{ github.workspace }}/install-patched-gtk4.sh
+
+      - name: Upload patched GTK4 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gnome-platform-${{ env.GNOME_VERSION }}-patched
-          path: flatpak-repo/
-          retention-days: 30
+          name: gtk4-patched-x11-shape-gnome${{ env.GNOME_VERSION }}
+          path: |
+            gtk4-patched-x11-shape.tar.gz
+            install-patched-gtk4.sh
+          retention-days: 90
