@@ -350,9 +350,12 @@ jobs:
         run: |
           cd /tmp/gtk4
           # Build GTK4 using the GNOME SDK environment
+          # Install to _install subdir within the shared /tmp/gtk4 directory
           flatpak run --share=network --filesystem=/tmp/gtk4 \
             --command=bash org.gnome.Sdk//${{ env.GNOME_VERSION }} -c '
+              set -e
               cd /tmp/gtk4
+              echo "Configuring GTK4 build..."
               meson setup _build \
                 --prefix=/app \
                 -Dx11-backend=true \
@@ -366,11 +369,15 @@ jobs:
                 -Dbuild-tests=false \
                 -Ddocumentation=false \
                 -Dbuild-testsuite=false
+              echo "Building GTK4..."
               ninja -C _build
-              DESTDIR=/tmp/gtk4-install ninja -C _build install
+              echo "Installing GTK4 to /tmp/gtk4/_install..."
+              DESTDIR=/tmp/gtk4/_install ninja -C _build install
+              echo "Build and install completed"
+              ls -la /tmp/gtk4/_install/app/lib/ || echo "Warning: lib dir not found"
             '
-          echo "GTK4 build completed"
-          ls -la /tmp/gtk4-install/app/lib/ || true
+          echo "GTK4 build completed on host"
+          ls -la /tmp/gtk4/_install/app/lib/ || echo "Install directory check"
 
       - name: Create Flatpak extension manifest
         run: |
@@ -409,7 +416,7 @@ jobs:
 
       - name: Create simple tarball of patched GTK4
         run: |
-          cd /tmp/gtk4-install
+          cd /tmp/gtk4/_install
           tar -czvf ${{ github.workspace }}/gtk4-patched-x11-shape.tar.gz app/
           echo "Created patched GTK4 tarball"
           ls -la ${{ github.workspace }}/gtk4-patched-x11-shape.tar.gz
