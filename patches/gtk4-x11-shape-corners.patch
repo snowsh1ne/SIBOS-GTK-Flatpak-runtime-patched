@@ -1,61 +1,36 @@
-From: SIBOS Project <sibos@example.org>
-Date: Thu, 5 Dec 2024 00:00:00 +0000
-Subject: [PATCH] gtk4: Use X11 Shape extension for rounded corners on non-composited displays
-
-On non-composited X11, GTK4 falls back to .solid-csd which has no rounded
-corners. This patch uses the X11 Shape extension (ShapeBounding) to create
-rounded window corners without requiring a compositor.
-
-The implementation adds:
-1. gdk_x11_surface_set_bounding_shape() - Sets the visual bounding shape
-2. create_rounded_corner_region() - Creates a cairo_region_t approximating
-   the rounded rectangle using scanlines
-3. update_x11_bounding_shape() - Applies the shape when needed
-
-This maintains full compatibility with composited displays while enabling
-rounded corners on window managers like SBWM, i3, dwm, etc.
-
-Signed-off-by: SIBOS Project <sibos@example.org>
----
- gdk/x11/gdksurface-x11.c |  56 ++++++++++++++
- gdk/x11/gdkx11surface.h  |   4 +
- gtk/gtkwindow.c          | 160 +++++++++++++++++++++++++++++++++++++++
- 3 files changed, 220 insertions(+)
-
-diff --git a/gdk/x11/gdksurface-x11.c b/gdk/x11/gdksurface-x11.c
-index 1234567..abcdef1 100644
 --- a/gdk/x11/gdksurface-x11.c
 +++ b/gdk/x11/gdksurface-x11.c
-@@ -3028,6 +3028,62 @@ gdk_x11_surface_set_input_region (GdkSurface     *surface,
+@@ -40,6 +40,7 @@
+ #include <X11/Xlib.h>
+ #include <X11/Xutil.h>
+ #include <X11/Xatom.h>
++#include <X11/extensions/shape.h>
+
+ #include <string.h>
+
+@@ -3028,6 +3029,62 @@ gdk_x11_surface_set_input_region (GdkSurface     *surface,
  #endif
  }
 
 +/**
 + * gdk_x11_surface_set_bounding_shape:
 + * @surface: a `GdkSurface`
-+ * @shape_region: (nullable): the region defining the bounding shape, or %NULL to remove
++ * @shape_region: (nullable): the region defining the bounding shape
 + *
 + * Sets the bounding shape for an X11 surface using the Shape extension.
-+ * This defines which parts of the window are visible (non-transparent).
-+ *
-+ * Unlike input shapes which define where the window receives input events,
-+ * the bounding shape defines the actual visible pixels of the window.
-+ * This is useful for creating rounded corners on non-composited X11 displays.
-+ *
-+ * If @shape_region is %NULL, the shape is reset to the full window rectangle.
-+ *
-+ * Since: 4.16
++ * This is useful for creating rounded corners on non-composited X11.
 + */
 +void
 +gdk_x11_surface_set_bounding_shape (GdkSurface     *surface,
 +                                    cairo_region_t *shape_region)
 +{
-+  GdkX11Surface *impl = GDK_X11_SURFACE (surface);
++  GdkX11Surface *impl;
++
++  g_return_if_fail (GDK_IS_X11_SURFACE (surface));
++
++  impl = GDK_X11_SURFACE (surface);
 +
 +  if (GDK_SURFACE_DESTROYED (surface))
-+    return;
-+
-+  if (!gdk_display_supports_shapes (GDK_SURFACE_DISPLAY (surface)))
 +    return;
 +
 +  if (shape_region == NULL)
@@ -66,7 +41,6 @@ index 1234567..abcdef1 100644
 +                         0, 0,
 +                         None,
 +                         ShapeSet);
-+      return;
 +    }
 +  else
 +    {
@@ -77,13 +51,16 @@ index 1234567..abcdef1 100644
 +                                       0, 0, impl->surface_scale,
 +                                       &xrects, &n_rects);
 +
-+      XShapeCombineRectangles (GDK_SURFACE_XDISPLAY (surface),
-+                               GDK_SURFACE_XID (surface),
-+                               ShapeBounding,
-+                               0, 0,
-+                               xrects, n_rects,
-+                               ShapeSet,
-+                               YXBanded);
++      if (n_rects > 0)
++        {
++          XShapeCombineRectangles (GDK_SURFACE_XDISPLAY (surface),
++                                   GDK_SURFACE_XID (surface),
++                                   ShapeBounding,
++                                   0, 0,
++                                   xrects, n_rects,
++                                   ShapeSet,
++                                   YXBanded);
++        }
 +
 +      g_free (xrects);
 +    }
@@ -92,30 +69,27 @@ index 1234567..abcdef1 100644
  /**
   * gdk_x11_surface_set_user_time:
   * @surface: (type GdkX11Surface): A toplevel `GdkSurface`
-diff --git a/gdk/x11/gdkx11surface.h b/gdk/x11/gdkx11surface.h
-index 1234567..abcdef1 100644
 --- a/gdk/x11/gdkx11surface.h
 +++ b/gdk/x11/gdkx11surface.h
 @@ -54,6 +54,10 @@ GDK_AVAILABLE_IN_ALL
  void     gdk_x11_surface_set_frame_sync_enabled (GdkSurface *surface,
                                                   gboolean   frame_sync_enabled);
 
-+GDK_AVAILABLE_IN_4_16
++GDK_AVAILABLE_IN_4_14
 +void     gdk_x11_surface_set_bounding_shape (GdkSurface     *surface,
 +                                             cairo_region_t *shape_region);
 +
  /**
   * GDK_SURFACE_XID:
   * @win: a `GdkSurface`
-diff --git a/gtk/gtkwindow.c b/gtk/gtkwindow.c
-index 1234567..abcdef1 100644
 --- a/gtk/gtkwindow.c
 +++ b/gtk/gtkwindow.c
-@@ -71,6 +71,11 @@
- #include <gdk/x11/gdkx.h>
- #endif
+@@ -68,6 +68,12 @@
+ #include "gtkwindowgroup.h"
+ #include "gtkprivate.h"
 
 +#ifdef GDK_WINDOWING_X11
++#include <gdk/x11/gdkx.h>
 +#include <gdk/x11/gdkx11surface.h>
 +#include <math.h>
 +#endif
@@ -123,97 +97,56 @@ index 1234567..abcdef1 100644
  /**
   * GtkWindow:
   *
-@@ -272,6 +277,9 @@ struct _GtkWindowPrivate
-   guint    edge_constraints;
-   guint    saved_edge_constraints;
-   guint    is_set_maximized : 1;
+@@ -267,6 +273,9 @@ struct _GtkWindowPrivate
+   GtkWidget *default_widget;
+   GtkWidget *focus_widget;
+   GtkWindow *transient_parent;
 +#ifdef GDK_WINDOWING_X11
-+  guint    x11_shape_applied : 1;
++  guint x11_shape_applied : 1;
 +#endif
- };
-
- enum {
-@@ -3140,6 +3148,158 @@ gtk_window_supports_client_shadow (GtkWindow *window)
+   GtkWindowGeometryInfo *geometry_info;
+   GtkWindowGroup *group;
+   GdkDisplay *display;
+@@ -3100,6 +3109,127 @@ gtk_window_supports_client_shadow (GtkWindow *window)
    return TRUE;
  }
 
 +#ifdef GDK_WINDOWING_X11
-+/**
-+ * create_rounded_corner_region:
-+ * @width: Window width in pixels
-+ * @height: Window height in pixels
-+ * @radius: Corner radius in pixels
-+ *
-+ * Creates a cairo_region_t representing a rounded rectangle.
-+ * Uses scanline approximation for the corners to work with
-+ * X11's rectangle-based shape regions.
-+ *
-+ * Returns: (transfer full): A new cairo_region_t, or %NULL on error
-+ */
 +static cairo_region_t *
-+create_rounded_corner_region (int width,
-+                              int height,
-+                              int radius)
++create_rounded_corner_region (int width, int height, int radius)
 +{
 +  cairo_region_t *region;
 +  cairo_rectangle_int_t rect;
-+  int y, x_offset;
-+  double r_squared;
++  int y;
 +
 +  if (width <= 0 || height <= 0)
 +    return NULL;
 +
-+  /* Clamp radius to half of smallest dimension */
 +  if (radius > width / 2)
 +    radius = width / 2;
 +  if (radius > height / 2)
 +    radius = height / 2;
 +  if (radius < 1)
-+    radius = 0;
-+
-+  region = cairo_region_create ();
-+  if (region == NULL)
 +    return NULL;
 +
-+  if (radius == 0)
-+    {
-+      /* No rounding needed, return full rectangle */
-+      rect.x = 0;
-+      rect.y = 0;
-+      rect.width = width;
-+      rect.height = height;
-+      cairo_region_union_rectangle (region, &rect);
-+      return region;
-+    }
++  region = cairo_region_create ();
 +
-+  r_squared = (double)radius * (double)radius;
-+
-+  /* Top rounded portion - scanline by scanline */
++  /* Top rounded section */
 +  for (y = 0; y < radius; y++)
 +    {
 +      double dy = radius - y - 0.5;
-+      double dx_squared = r_squared - dy * dy;
++      int x_off = radius - (int)(sqrt (radius * radius - dy * dy) + 0.5);
++      if (x_off < 0) x_off = 0;
 +
-+      if (dx_squared > 0)
-+        x_offset = radius - (int)(sqrt (dx_squared) + 0.5);
-+      else
-+        x_offset = radius;
-+
-+      if (x_offset < 0)
-+        x_offset = 0;
-+      if (x_offset > radius)
-+        x_offset = radius;
-+
-+      rect.x = x_offset;
++      rect.x = x_off;
 +      rect.y = y;
-+      rect.width = width - 2 * x_offset;
++      rect.width = width - 2 * x_off;
 +      rect.height = 1;
-+
 +      if (rect.width > 0)
 +        cairo_region_union_rectangle (region, &rect);
 +    }
 +
-+  /* Middle portion - full width */
++  /* Middle section */
 +  if (height > 2 * radius)
 +    {
 +      rect.x = 0;
@@ -223,27 +156,17 @@ index 1234567..abcdef1 100644
 +      cairo_region_union_rectangle (region, &rect);
 +    }
 +
-+  /* Bottom rounded portion */
++  /* Bottom rounded section */
 +  for (y = 0; y < radius; y++)
 +    {
 +      double dy = y + 0.5;
-+      double dx_squared = r_squared - dy * dy;
++      int x_off = radius - (int)(sqrt (radius * radius - dy * dy) + 0.5);
++      if (x_off < 0) x_off = 0;
 +
-+      if (dx_squared > 0)
-+        x_offset = radius - (int)(sqrt (dx_squared) + 0.5);
-+      else
-+        x_offset = radius;
-+
-+      if (x_offset < 0)
-+        x_offset = 0;
-+      if (x_offset > radius)
-+        x_offset = radius;
-+
-+      rect.x = x_offset;
++      rect.x = x_off;
 +      rect.y = height - radius + y;
-+      rect.width = width - 2 * x_offset;
++      rect.width = width - 2 * x_off;
 +      rect.height = 1;
-+
 +      if (rect.width > 0)
 +        cairo_region_union_rectangle (region, &rect);
 +    }
@@ -259,19 +182,31 @@ index 1234567..abcdef1 100644
 +  cairo_region_t *region;
 +  int width, height, radius;
 +
++  if (!gtk_widget_get_realized (GTK_WIDGET (window)))
++    return;
++
 +  surface = gtk_native_get_surface (GTK_NATIVE (window));
-+  if (surface == NULL || !GDK_IS_X11_SURFACE (surface))
++  if (surface == NULL)
++    return;
++
++  if (!GDK_IS_X11_SURFACE (surface))
++    return;
++
++  /* Check if composited - if so, no shape needed */
++  if (gdk_display_is_composited (gtk_widget_get_display (GTK_WIDGET (window))))
 +    return;
 +
 +  width = gdk_surface_get_width (surface);
 +  height = gdk_surface_get_height (surface);
-+
-+  /* Default corner radius for CSD windows */
 +  radius = 12;
 +
-+  /* For maximized/fullscreen windows, use square corners */
++  /* Square corners for maximized/fullscreen */
 +  if (priv->maximized || priv->fullscreen)
-+    radius = 0;
++    {
++      gdk_x11_surface_set_bounding_shape (surface, NULL);
++      priv->x11_shape_applied = FALSE;
++      return;
++    }
 +
 +  region = create_rounded_corner_region (width, height, radius);
 +  if (region != NULL)
@@ -281,34 +216,25 @@ index 1234567..abcdef1 100644
 +      priv->x11_shape_applied = TRUE;
 +    }
 +}
-+#endif /* GDK_WINDOWING_X11 */
++#endif
 +
-+static gboolean
-+gtk_window_is_composited (GtkWindow *window)
++static void
++maybe_update_shape (GtkWindow *window)
 +{
-+  GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (window));
-+  return gdk_display_is_composited (display);
++#ifdef GDK_WINDOWING_X11
++  update_x11_bounding_shape (window);
++#endif
 +}
 +
  static void
  gtk_window_enable_csd (GtkWindow *window)
  {
-@@ -3159,6 +3319,16 @@ gtk_window_enable_csd (GtkWindow *window)
+@@ -3119,6 +3249,8 @@ gtk_window_enable_csd (GtkWindow *window)
      {
        gtk_widget_add_css_class (widget, "solid-csd");
      }
 +
-+#ifdef GDK_WINDOWING_X11
-+  /* Apply bounding shape for rounded corners on non-composited X11 */
-+  if (!gtk_window_is_composited (window))
-+    {
-+      GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (window));
-+      if (surface != NULL && GDK_IS_X11_SURFACE (surface))
-+        update_x11_bounding_shape (window);
-+    }
-+#endif
++  maybe_update_shape (window);
 
    priv->client_decorated = TRUE;
  }
---
-2.43.0
