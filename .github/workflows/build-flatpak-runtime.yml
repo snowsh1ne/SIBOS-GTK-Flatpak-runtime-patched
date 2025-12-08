@@ -22,7 +22,7 @@ on:
         default: '47'
 
 env:
-  GNOME_VERSION: '47'
+  GNOME_VERSION: '49'
   GTK3_VERSION: ${{ github.event.inputs.gtk3_version || '3.24.43' }}
   GTK4_VERSION: ${{ github.event.inputs.gtk4_version || '4.14.4' }}
 
@@ -338,7 +338,8 @@ jobs:
 
       - name: Clone GTK4 source
         run: |
-          git clone --depth 1 --branch 4.14.5 https://gitlab.gnome.org/GNOME/gtk.git /tmp/gtk4
+          # GNOME 49 uses GTK 4.16.x
+          git clone --depth 1 --branch 4.16.7 https://gitlab.gnome.org/GNOME/gtk.git /tmp/gtk4
 
       - name: Apply X11 Shape corners patch
         run: |
