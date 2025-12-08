@@ -1,18 +1,10 @@
---- a/gdk/x11/gdksurface-x11.c
-+++ b/gdk/x11/gdksurface-x11.c
-@@ -40,6 +40,7 @@
- #include <X11/Xlib.h>
- #include <X11/Xutil.h>
- #include <X11/Xatom.h>
-+#include <X11/extensions/shape.h>
-
- #include <string.h>
-
-@@ -3028,6 +3029,62 @@ gdk_x11_surface_set_input_region (GdkSurface     *surface,
- #endif
+diff -ruN a/gdk/x11/gdksurface-x11.c b/gdk/x11/gdksurface-x11.c
+--- a/gdk/x11/gdksurface-x11.c	2025-12-08 12:39:26.557671609 +0000
++++ b/gdk/x11/gdksurface-x11.c	2025-12-08 12:41:16.845850309 +0000
+@@ -2944,6 +2944,60 @@
  }
-
-+/**
+ 
+ /**
 + * gdk_x11_surface_set_bounding_shape:
 + * @surface: a `GdkSurface`
 + * @shape_region: (nullable): the region defining the bounding shape
@@ -66,51 +58,50 @@
 +    }
 +}
 +
- /**
++/**
   * gdk_x11_surface_set_user_time:
   * @surface: (type GdkX11Surface): A toplevel `GdkSurface`
---- a/gdk/x11/gdkx11surface.h
-+++ b/gdk/x11/gdkx11surface.h
-@@ -54,6 +54,10 @@ GDK_AVAILABLE_IN_ALL
+  * @timestamp: An XServer timestamp to which the property should be set
+diff -ruN a/gdk/x11/gdkx11surface.h b/gdk/x11/gdkx11surface.h
+--- a/gdk/x11/gdkx11surface.h	2025-12-08 12:39:26.561671651 +0000
++++ b/gdk/x11/gdkx11surface.h	2025-12-08 12:41:38.382080477 +0000
+@@ -77,6 +77,10 @@
  void     gdk_x11_surface_set_frame_sync_enabled (GdkSurface *surface,
                                                   gboolean   frame_sync_enabled);
-
+ 
 +GDK_AVAILABLE_IN_4_14
 +void     gdk_x11_surface_set_bounding_shape (GdkSurface     *surface,
 +                                             cairo_region_t *shape_region);
 +
  /**
-  * GDK_SURFACE_XID:
+  * GDK_SURFACE_XDISPLAY:
   * @win: a `GdkSurface`
---- a/gtk/gtkwindow.c
-+++ b/gtk/gtkwindow.c
-@@ -68,6 +68,12 @@
- #include "gtkwindowgroup.h"
- #include "gtkprivate.h"
-
-+#ifdef GDK_WINDOWING_X11
-+#include <gdk/x11/gdkx.h>
+diff -ruN a/gtk/gtkwindow.c b/gtk/gtkwindow.c
+--- a/gtk/gtkwindow.c	2025-12-08 12:39:26.971676033 +0000
++++ b/gtk/gtkwindow.c	2025-12-08 12:43:05.479011322 +0000
+@@ -78,6 +78,8 @@
+ 
+ #ifdef GDK_WINDOWING_X11
+ #include "x11/gdkx.h"
 +#include <gdk/x11/gdkx11surface.h>
 +#include <math.h>
-+#endif
-+
- /**
-  * GtkWindow:
-  *
-@@ -267,6 +273,9 @@ struct _GtkWindowPrivate
-   GtkWidget *default_widget;
-   GtkWidget *focus_widget;
-   GtkWindow *transient_parent;
+ #endif
+ 
+ #ifdef GDK_WINDOWING_WIN32
+@@ -254,6 +256,9 @@
+   guint    move_focus                : 1;
+   guint    unset_default             : 1;
+   guint    in_present                : 1;
 +#ifdef GDK_WINDOWING_X11
-+  guint x11_shape_applied : 1;
++  guint    x11_shape_applied         : 1;
 +#endif
-   GtkWindowGeometryInfo *geometry_info;
-   GtkWindowGroup *group;
-   GdkDisplay *display;
-@@ -3100,6 +3109,127 @@ gtk_window_supports_client_shadow (GtkWindow *window)
-   return TRUE;
+ 
+   GtkGesture *click_gesture;
+   GtkEventController *application_shortcut_controller;
+@@ -2971,6 +2976,121 @@
+   return gdk_display_supports_shadow_width (display);
  }
-
+ 
 +#ifdef GDK_WINDOWING_X11
 +static cairo_region_t *
 +create_rounded_corner_region (int width, int height, int radius)
@@ -229,12 +220,12 @@
  static void
  gtk_window_enable_csd (GtkWindow *window)
  {
-@@ -3119,6 +3249,8 @@ gtk_window_enable_csd (GtkWindow *window)
-     {
+@@ -2987,6 +3107,8 @@
        gtk_widget_add_css_class (widget, "solid-csd");
      }
-+
+ 
 +  maybe_update_shape (window);
-
++
    priv->client_decorated = TRUE;
  }
+ 
