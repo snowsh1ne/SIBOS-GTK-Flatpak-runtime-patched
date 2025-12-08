@@ -427,29 +427,30 @@ jobs:
           cat > ${{ github.workspace }}/install-patched-gtk4.sh << 'EOF'
           #!/bin/bash
           # Install patched GTK4 for X11 Shape extension support
-          # This replaces GTK4 in the GNOME Flatpak runtime
+          # This replaces GTK4 in the GNOME Flatpak runtime (user mode)
 
           set -e
 
-          RUNTIME_PATH="$HOME/.local/share/flatpak/runtime/org.gnome.Platform/x86_64/${{ env.GNOME_VERSION }}/active/files"
+          RUNTIME_PATH="$HOME/.local/share/flatpak/runtime/org.gnome.Platform/x86_64/49/active/files"
 
           if [ ! -d "$RUNTIME_PATH" ]; then
             echo "Error: GNOME Platform runtime not found at $RUNTIME_PATH"
-            echo "Please install it first: flatpak install flathub org.gnome.Platform//${{ env.GNOME_VERSION }}"
+            echo "Please install it first: flatpak install --user flathub org.gnome.Platform//49"
             exit 1
           fi
-
-          echo "Backing up original GTK4 libraries..."
-          sudo cp -a "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.so"* "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/" 2>/dev/null || mkdir -p "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/"
 
           echo "Extracting patched GTK4..."
           tar -xzf gtk4-patched-x11-shape.tar.gz
 
+          echo "Backing up original GTK4 libraries..."
+          mkdir -p "$RUNTIME_PATH/lib/libgtk-4.backup/"
+          cp -a "$RUNTIME_PATH/lib/libgtk-4.so"* "$RUNTIME_PATH/lib/libgtk-4.backup/" 2>/dev/null || true
+
           echo "Installing patched GTK4 libraries..."
-          sudo cp -a app/lib/libgtk-4.so* "$RUNTIME_PATH/lib/x86_64-linux-gnu/"
+          cp -a app/lib/libgtk-4.so* "$RUNTIME_PATH/lib/"
 
           echo "Done! Patched GTK4 with X11 Shape extension support installed."
-          echo "Flatpak apps using org.gnome.Platform will now have rounded corners on non-composited X11."
+          echo "Flatpak apps using org.gnome.Platform//49 will now have rounded corners on non-composited X11."
           EOF
           chmod +x ${{ github.workspace }}/install-patched-gtk4.sh
 
