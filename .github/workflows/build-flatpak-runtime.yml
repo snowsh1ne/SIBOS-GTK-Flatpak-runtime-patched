@@ -338,8 +338,8 @@ jobs:
 
       - name: Clone GTK4 source
         run: |
-          # GNOME 49 uses GTK 4.16.x
-          git clone --depth 1 --branch 4.16.7 https://gitlab.gnome.org/GNOME/gtk.git /tmp/gtk4
+          # GNOME 49 uses GTK 4.20.x (check libgtk-4.so.1.2000.x in runtime)
+          git clone --depth 1 --branch 4.20.3 https://gitlab.gnome.org/GNOME/gtk.git /tmp/gtk4
 
       - name: Apply X11 Shape corners patch
         run: |
