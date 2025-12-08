@@ -443,11 +443,11 @@ jobs:
           tar -xzf gtk4-patched-x11-shape.tar.gz
 
           echo "Backing up original GTK4 libraries..."
-          mkdir -p "$RUNTIME_PATH/lib/libgtk-4.backup/"
-          cp -a "$RUNTIME_PATH/lib/libgtk-4.so"* "$RUNTIME_PATH/lib/libgtk-4.backup/" 2>/dev/null || true
+          mkdir -p "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/"
+          cp -a "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.so"* "$RUNTIME_PATH/lib/x86_64-linux-gnu/libgtk-4.backup/" 2>/dev/null || true
 
           echo "Installing patched GTK4 libraries..."
-          cp -a app/lib/libgtk-4.so* "$RUNTIME_PATH/lib/"
+          cp -a app/lib64/libgtk-4.so* "$RUNTIME_PATH/lib/x86_64-linux-gnu/"
 
           echo "Done! Patched GTK4 with X11 Shape extension support installed."
           echo "Flatpak apps using org.gnome.Platform//49 will now have rounded corners on non-composited X11."
